@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <time.h>
-#include <progbase/events.h>
+
+#include <progbase/events2.h>
 #include <progbase/console.h>
 
 /* custom constant event type ids*/
@@ -17,7 +17,7 @@ int main(void) {
 	EventSystem_init();
 
 	// add event handlers
-	EventSystem_addHandler(EventHandler_new(NULL, NULL, CustomHandler_update));
+	EventSystem_addHandler(EventHandler_new(NULL, CustomHandler_update));
 
 	// start infinite event loop
 	EventSystem_loop();
@@ -30,4 +30,5 @@ int main(void) {
 
 void CustomHandler_update(EventHandler * self, Event * event) {
 	// @todo implement
+	puts("Got some event!");
 }

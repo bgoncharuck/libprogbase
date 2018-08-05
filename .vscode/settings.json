@@ -10,6 +10,11 @@
 	],
 	"files.associations": {
 		"thread": "cpp",
-		"functional": "cpp"
+		"functional": "cpp",
+		"climits": "cpp",
+		"pblist.h": "c",
+		"events.h": "c",
+		"event_pbqueue.h": "c",
+		"events2.h": "c"
 	}
 }

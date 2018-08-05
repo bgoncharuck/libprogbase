@@ -7,7 +7,7 @@ int main(void) {
     Console_lockInput();
     printf("Use [WASD] to move, [Q] to quit: ");
     while (1) {
-        char key = Console_getChar();
+        char key = getchar();
         if (key == 'q') break;
         if (key == 'w') printf("[UP] ");
         if (key == 'a') printf("[LEFT] ");

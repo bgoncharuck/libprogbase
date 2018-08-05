@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
-
 #include <progbase/events.h>
 #include <progbase/console.h>
 
@@ -9,47 +8,39 @@
 enum {
 	KeyInputEventTypeId,
 	RandomNumberEventTypeId,
-	SpaceHitEventTypeId
+	CustomEventTypeId
 };
 
-static Event * KeyInputEvent_new(EventHandler * sender, char keyCode);
-static char KeyInputEvent_keyCode(Event * event);
+/* event handler functions prototypes */
+void RandomNumberGenerator_update(EventHandler * self, Event * event);
+void UpdatePrintHandler_update(EventHandler * self, Event * event);
+void KeyInputHandler_update(EventHandler * self, Event * event);
+void CustomHandler_handleEvent(EventHandler * self, Event * event);
+void Timer_handleEvent(EventHandler * self, Event * event);
+void HitCounter_handleEvent(EventHandler * self, Event * event);
 
-static Event * RandomNumberEvent_new(EventHandler * sender);
-static int RandomNumberEvent_number(Event * event);
-
-static Event * SpaceHitEvent_new(EventHandler * sender);
-
-// stateless handlers
-void RandomNumberGenerator_onEvent(EventHandler * self, Event * event);
-void Logger_onEvent(EventHandler * self, Event * event);
-void KeyInput_onEvent(EventHandler * self, Event * event);
-void MainEventsListener_onEvent(EventHandler * self, Event * event);
-
-// timer
 typedef struct Timer Timer;
-
-Timer * Timer_new(int id, int count);
-void Timer_free(Timer * self);
-void Timer_onEvent(EventHandler * self, Event * event);
-
-// space hit counter
-int * SpaceHitCounter_new(void);
-void SpaceHitCounter_free(int * self);
-void SpaceHitCounter_onEvent(EventHandler * self, Event * event);
+struct Timer {
+	int id;
+	int timeCounter;
+};
 
 int main(void) {
 	// startup event system
 	EventSystem_init();
 
-	// add stateless event handlers
-	EventSystem_addHandler(EventHandler_new(NULL, NULL, Logger_onEvent));
-	EventSystem_addHandler(EventHandler_new(NULL, NULL, KeyInput_onEvent));
-	EventSystem_addHandler(EventHandler_new(NULL, NULL, RandomNumberGenerator_onEvent));
-	EventSystem_addHandler(EventHandler_new(NULL, NULL, MainEventsListener_onEvent));
-	// add stateful event handlers
-	EventSystem_addHandler(EventHandler_new(SpaceHitCounter_new(), (DestructorFunction)SpaceHitCounter_free, SpaceHitCounter_onEvent));
-	EventSystem_addHandler(EventHandler_new(Timer_new(0, 100), (DestructorFunction)Timer_free, Timer_onEvent));
+	// add event handlers
+	EventSystem_addHandler(EventHandler_new(NULL, NULL, UpdatePrintHandler_update));
+	EventSystem_addHandler(EventHandler_new(NULL, NULL, KeyInputHandler_update));
+	EventSystem_addHandler(EventHandler_new(NULL, NULL, RandomNumberGenerator_update));
+	int * spaceHitCounter = malloc(sizeof(int));
+	*spaceHitCounter = 0;
+	EventSystem_addHandler(EventHandler_new(spaceHitCounter, free, HitCounter_handleEvent));
+	Timer * timer = malloc(sizeof(Timer));
+	timer->id = 0;
+	timer->timeCounter = 100;
+	EventSystem_addHandler(EventHandler_new(timer, free, Timer_handleEvent));
+	EventSystem_addHandler(EventHandler_new(NULL, NULL, CustomHandler_handleEvent));
 
 	// start infinite event loop
 	EventSystem_loop();
@@ -60,12 +51,12 @@ int main(void) {
 
 /* event handlers functions implementations */
 
-/* stateless handlers */
-
-void Logger_onEvent(EventHandler * self, Event * event) {
+void UpdatePrintHandler_update(EventHandler * self, Event * event) {
 	switch (event->type) {
 		case StartEventTypeId: {
-			puts("\n<<<START!>>>\n");
+			puts("");
+			puts("<<<START!>>>");
+			puts("");
 			break;
 		}
 		case UpdateEventTypeId: {
@@ -73,24 +64,23 @@ void Logger_onEvent(EventHandler * self, Event * event) {
 			break;
 		}
 		case ExitEventTypeId: {
-			puts("\n<<<EXIT!>>>\n");
+			puts("");
+			puts("<<<EXIT!>>>");
+			puts("");
 			break;
 		}
 	}
 }
 
-void KeyInput_onEvent(EventHandler * self, Event * event) {
-	switch (event->type) {
-		case UpdateEventTypeId: {
-			if (Console_isKeyDown()) {  // non-blocking key input check
-				EventSystem_emit(KeyInputEvent_new(self, Console_getChar()));
-			}
-			break;
-		}
+void KeyInputHandler_update(EventHandler * self, Event * event) {
+	if (Console_isKeyDown()) {  // non-blocking key input check
+		char * keyCode = malloc(sizeof(char));
+		*keyCode = getchar();
+		EventSystem_emit(Event_new(self, KeyInputEventTypeId, keyCode, free));
 	}
 }
 
-void RandomNumberGenerator_onEvent(EventHandler * self, Event * event) {
+void RandomNumberGenerator_update(EventHandler * self, Event * event) {
 	switch (event->type) {
 		case StartEventTypeId: {
 			srand(time(0));
@@ -98,26 +88,44 @@ void RandomNumberGenerator_onEvent(EventHandler * self, Event * event) {
 		}
 		case UpdateEventTypeId: {
 			if (rand() % 33 == 0) {
-				EventSystem_emit(RandomNumberEvent_new(self));
+				int * number = malloc(sizeof(int));
+				*number = rand() % 200 - 100;
+				EventSystem_emit(Event_new(self, RandomNumberEventTypeId, number, free));
 			}
 			break;
 		}
 	}
 }
 
-void MainEventsListener_onEvent(EventHandler * self, Event * event) {
+void HitCounter_handleEvent(EventHandler * self, Event * event) {
+	switch (event->type) {
+		case CustomEventTypeId: {
+			int * counterPtr = (int *)self->data;
+			(*counterPtr)++;
+			printf(">>> Custom event! Counter: %i\n", *counterPtr);
+			break;
+		}
+	}
+}
+
+void CustomHandler_handleEvent(EventHandler * self, Event * event) {
 	switch (event->type) {
 		case RandomNumberEventTypeId: {
-			printf("Random number %i\n", RandomNumberEvent_number(event));
+			int * number = (int *)event->data;
+			printf("Random number %i\n", *number);
 			break;
 		}
 		case KeyInputEventTypeId: {
-			char keyCode = KeyInputEvent_keyCode(event);
+			char * keyCodePtr = (char *)event->data;
+			char keyCode = *keyCodePtr;
 			if (keyCode == ' ') {
-				EventSystem_emit(SpaceHitEvent_new(self));
+				EventSystem_emit(Event_new(self, CustomEventTypeId, NULL, NULL));
 			}
 			if (keyCode == 'a') {
-				EventSystem_addHandler(EventHandler_new(Timer_new(rand() % 100, 50), (DestructorFunction)Timer_free, Timer_onEvent));
+				Timer * timer = malloc(sizeof(Timer));
+				timer->id = rand() % 100;
+				timer->timeCounter = 50;
+				EventSystem_addHandler(EventHandler_new(timer, free, Timer_handleEvent));
 			}
 			if (keyCode == 'q') {
 				EventSystem_exit();
@@ -128,28 +136,14 @@ void MainEventsListener_onEvent(EventHandler * self, Event * event) {
 	} 
 }
 
-/* stateful handlers */
-struct Timer {
-	int id;
-	int timeCounter;
-};
-Timer * Timer_new(int id, int count) {
-	Timer * timer = malloc(sizeof(Timer));
-	timer->id = id;
-	timer->timeCounter = count;
-	return timer;
-}
-void Timer_free(Timer * self) { free(self); }
-void Timer_onEvent(EventHandler * self, Event * event) {
+void Timer_handleEvent(EventHandler * self, Event * event) {
 	switch(event->type) {
 		case UpdateEventTypeId: {
 			Timer * timer = (Timer *)self->data;
+			double elapsedMillis = *(double *)event->data;
 			timer->timeCounter -= 1;
 			if (timer->timeCounter % 10 == 0) {
-				printf("\nTimer #%i: %i {%.1lf}\n", 
-					timer->id, 
-					timer->timeCounter, 
-					UpdateEvent_elapsedMillis(event)); 
+				printf("\nTimer #%i: %i {%.1lf}\n", timer->id, timer->timeCounter, elapsedMillis); 
 			}
 			if (timer->timeCounter == 0) {
 				printf("\nTimer #%i: COMPLETED!\n", timer->id); 
@@ -158,45 +152,4 @@ void Timer_onEvent(EventHandler * self, Event * event) {
 			break;
 		}
 	}
-}
-
-int * SpaceHitCounter_new(void) {
-	int * spaceHitCounter = malloc(sizeof(int));
-	*spaceHitCounter = 0;
-	return spaceHitCounter;
-}
-void SpaceHitCounter_free(int * self) { free(self); }
-void SpaceHitCounter_onEvent(EventHandler * self, Event * event) {
-	switch (event->type) {
-		case SpaceHitEventTypeId: {
-			int * counterPtr = (int *)self->data;
-			(*counterPtr)++;
-			printf(">>> Custom event! Counter: %i\n", *counterPtr);
-			break;
-		}
-	}
-}
-
-/* events functions */
-
-static Event * KeyInputEvent_new(EventHandler * sender, char keyCode) {
-	char * keyCodeData = malloc(sizeof(char));
-    *keyCodeData = keyCode;
-	return Event_new(sender, KeyInputEventTypeId, keyCodeData, free);
-}
-static char KeyInputEvent_keyCode(Event * event) {
-	return *(char *)event->data;
-}
-
-static Event * RandomNumberEvent_new(EventHandler * sender) {
-	int * number = malloc(sizeof(int));
-	*number = rand() % 200 - 100;
-	return Event_new(sender, RandomNumberEventTypeId, number, free);
-}
-static int RandomNumberEvent_number(Event * event) {
-	return *(int *)event->data;
-}
-
-static Event * SpaceHitEvent_new(EventHandler * sender) {
-	return Event_new(sender, SpaceHitEventTypeId, NULL, NULL);
 }
